@@ -1,6 +1,6 @@
 import time
 import Settings as s
-import Excel
+import Excel as Excel
 from Camera import Camera
 from Poppy import Poppy
 from Audio import Audio

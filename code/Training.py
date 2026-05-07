@@ -1,7 +1,7 @@
 import threading
 import time
 import Settings as s
-import Excel
+import Excel as Excel
 import random
 from Audio import say
 

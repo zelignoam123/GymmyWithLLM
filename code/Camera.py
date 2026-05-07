@@ -12,7 +12,7 @@ import datetime
 from MP import MP
 from Joint import Joint
 import Settings as s
-import Excel
+import Excel as Excel
 from Audio import say
 from performance_classification import feature_extraction, predict_performance, plot_data
 
