@@ -9,8 +9,8 @@ class Poppy(threading.Thread):
 
     def __init__(self):
         threading.Thread.__init__(self)
-        self.poppy = PoppyTorso()  # for real robot
-        # self.poppy = PoppyTorso(simulator='vrep')  # for simulator
+        # self.poppy = PoppyTorso()  # for real robot
+        self.poppy = PoppyTorso(simulator='vrep')  # for simulator
         print("ROBOT INITIALIZATION")
         for m in self.poppy.motors:  # motors need to be initialized, False=stiff, True=loose
             m.compliant = False

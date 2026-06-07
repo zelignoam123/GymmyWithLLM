@@ -1,8 +1,12 @@
 import threading
 import Settings as s
-import winsound
+import platform
 from pygame import mixer
 import time
+
+# winsound is Windows-only, import conditionally
+if platform.system() == 'Windows':
+    import winsound
 
 
 class Audio(threading.Thread):
@@ -20,8 +24,12 @@ class Audio(threading.Thread):
         print ("AUDIO DONE")
 
     def say1(self, str_to_say):
+        # Windows-only audio playback method
         if (str_to_say != ""):
-            winsound.PlaySound(s.audio_path+str_to_say+'.wav', winsound.SND_FILENAME)
+            if platform.system() == 'Windows':
+                winsound.PlaySound(s.audio_path+str_to_say+'.wav', winsound.SND_FILENAME)
+            else:
+                print("Warning: say1() is Windows-only. Use say() function instead.")
 
 
 def say(str_to_say):
