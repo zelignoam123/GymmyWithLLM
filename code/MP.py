@@ -23,10 +23,11 @@ class MP(threading.Thread):
         mp_drawing_styles = mp.solutions.drawing_styles
         mp_pose = mp.solutions.pose
 
-        cap = cv2.VideoCapture(0) # 0 - webcam, 2 - second USB in maya's computer
-        image_width = cap.get(cv2.CAP_PROP_FRAME_WIDTH)  # float `width`
-        # cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1680)
-        image_height = cap.get(cv2.CAP_PROP_FRAME_HEIGHT)  # float `height`
+        # Use the VideoCapture opened on the main thread (avoids macOS AVFoundation
+        # empty-frame bug when cap is created from a background thread).
+        cap = s.cap
+        image_width = cap.get(cv2.CAP_PROP_FRAME_WIDTH)
+        image_height = cap.get(cv2.CAP_PROP_FRAME_HEIGHT)
         with mp_pose.Pose(
                 min_detection_confidence=0.8,
                 min_tracking_confidence=0.5) as pose:
@@ -91,8 +92,10 @@ class MP(threading.Thread):
                     mp_pose.POSE_CONNECTIONS,
                     landmark_drawing_spec=mp_drawing_styles.get_default_pose_landmarks_style())
                 # Present camera's video: Flip the image horizontally for a selfie-view display.
-                if show:
-                    cv2.imshow('MediaPipe Pose', cv2.flip(image, 1))
+                # cv2.imshow is disabled — it crashes on macOS when called from a background
+                # thread (NSWindow must be created on the main thread).
+                # if show:
+                #     cv2.imshow('MediaPipe Pose', cv2.flip(image, 1))
 
                 # Stop MediaPipe:
                 key = cv2.waitKey(1) #TODO change
@@ -105,7 +108,7 @@ class MP(threading.Thread):
                     'json_message': message
                 })
 
-            cap.release()
+            # Don't release — s.cap is owned by main.py
 
             # Save recorded data to a JSON file
             with open('recorded_data2.json', 'w') as f:

@@ -1,20 +1,34 @@
 import threading
+import os
 from pypot.creatures import PoppyTorso
 import time
 import Settings as s
 from Audio import say
+
+# Absolute path to the Poppy Torso V-REP scene (downloaded by setup.sh into the repo root).
+# Passing this explicitly avoids pypot silently loading a stale/missing bundled scene.
+_REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+_SCENE_PATH = os.path.join(_REPO_ROOT, 'poppy_torso.ttt')
 
 
 class Poppy(threading.Thread):
 
     def __init__(self):
         threading.Thread.__init__(self)
+        print("ROBOT: connecting to V-REP simulator on port 19997...", flush=True)
+        if not os.path.isfile(_SCENE_PATH):
+            raise FileNotFoundError(
+                f"Poppy scene not found at {_SCENE_PATH}. Re-run ./setup.sh to download it."
+            )
+        print(f"ROBOT: telling CoppeliaSim to load scene: {_SCENE_PATH}", flush=True)
         # self.poppy = PoppyTorso()  # for real robot
-        self.poppy = PoppyTorso(simulator='vrep')  # for simulator
-        print("ROBOT INITIALIZATION")
+        self.poppy = PoppyTorso(simulator='vrep', scene=_SCENE_PATH)  # for simulator
+        print("ROBOT: V-REP connected. Initializing motors...", flush=True)
         for m in self.poppy.motors:  # motors need to be initialized, False=stiff, True=loose
             m.compliant = False
+        print("ROBOT: motors stiff. Moving to init position (~5s)...", flush=True)
         self.init_robot()
+        print("ROBOT: init position reached.", flush=True)
 
     def init_robot(self):
         for m in self.poppy.motors:

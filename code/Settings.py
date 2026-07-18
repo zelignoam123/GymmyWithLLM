@@ -31,6 +31,7 @@ def __init__():
     global picture_path
 
     global camera_num
+    global cap  # cv2.VideoCapture — initialized on main thread, shared with MP
 
     # adaptation
     global adaptation_model

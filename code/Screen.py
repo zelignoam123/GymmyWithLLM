@@ -42,6 +42,31 @@ class FullScreenApp(object):
             master.winfo_screenwidth()-pad, master.winfo_screenheight()-pad))
         master.bind('<Escape>', self.toggle_geom)
 
+        # Camera preview thumbnail — bottom-right corner, updated from main thread.
+        self._cam_label = tk.Label(master, bg='black', bd=2, relief='solid')
+        self._cam_label.place(relx=1.0, rely=1.0, anchor='se', x=-10, y=-10)
+        self._update_camera()
+
+    def _update_camera(self):
+        try:
+            cap = getattr(s, 'cap', None)
+            if cap and cap.isOpened():
+                ok, frame = cap.read()
+                if ok:
+                    import cv2
+                    frame = cv2.flip(frame, 1)
+                    frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                    h, w = frame.shape[:2]
+                    thumb_w = 320
+                    thumb_h = int(h * thumb_w / w)
+                    img = Image.fromarray(frame).resize((thumb_w, thumb_h), Image.BILINEAR)
+                    photo = ImageTk.PhotoImage(img)
+                    self._cam_label.configure(image=photo)
+                    self._cam_label._photo = photo  # prevent GC
+        except Exception:
+            pass
+        self.master.after(66, self._update_camera)  # ~15 fps — light enough for main thread
+
     def toggle_geom(self, event):
         geom=self.master.winfo_geometry()
         print(geom, self._geom)

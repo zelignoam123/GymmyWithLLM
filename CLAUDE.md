@@ -1,5 +1,25 @@
 # Gymmy Thesis - Adaptive Physical Exercise Training System
 
+## Thesis Context
+
+This repository is the codebase for **Noam Zelig's Master's thesis**. The existing system was inherited from an earlier project (adaptive exercise training with a Poppy Torso robot + MediaPipe pose tracking + ML performance classification). The thesis contribution being added on top is:
+
+**Goal: integrate an LLM into the training loop.**
+
+Two phases, in priority order:
+
+1. **Phase 1 — LLM as a feedback translator (primary contribution).**
+   Today the system decides *what* to say to the trainee via hardcoded audio files (`audio files/{lang}/{gender}/*.wav`) triggered by rule-based logic (e.g. "corrective feedback fires at rep 4 if user counter ≤ 2"). This is rigid, robotic, and doesn't adapt phrasing to context. Phase 1 replaces the hardcoded verbal feedback path with an LLM that takes the current performance signals (angle data, ML performance class, rep counts, which hand is problematic, exercise name) and generates a **natural, human-understandable coaching cue**, which the robot then speaks to the trainee. The robot remains the delivery channel; the LLM sits between the classifier and the audio output.
+
+2. **Phase 2 — Voice input from the trainee (stretch goal, only if Phase 1 lands).**
+   Today the *only* input signal from the trainee is the camera / MediaPipe skeleton. Phase 2 adds a **voice input channel** so the trainee can talk back to the robot ("this hurts my shoulder", "slow down", "I'm ready"), and the LLM incorporates that natural-language input into its next feedback turn. The camera stays as the pose-tracking sensor; voice is added *alongside* it as a second modality, not as a replacement. Feasibility is uncertain — this is only pursued if there's time after Phase 1.
+
+**What this means for future sessions:**
+- Any change that touches feedback generation, audio playback, or the `say(...)` path is thesis-relevant — flag it and ask before altering behavior in a way that would conflict with the LLM integration point.
+- The natural insertion point for Phase 1 is between `performance_classification.py` (produces the class) and `Audio.py::say(...)` (speaks the .wav). A new module (e.g. `LLMFeedback.py`) should own the prompt construction + LLM call + TTS handoff.
+- Voice input (Phase 2) will need a new thread parallel to `Camera` / `MP`, feeding into `Settings.py` the same way pose data does.
+- Don't refactor the existing rule-based feedback out yet — Phase 1 needs it as the fallback path and as the ground-truth baseline for the thesis evaluation.
+
 ## Project Overview
 
 This is a research project implementing an adaptive physical exercise training system that combines:
@@ -7,6 +27,16 @@ This is a research project implementing an adaptive physical exercise training s
 - **MediaPipe pose detection** - tracks user movements via camera
 - **Machine learning** - classifies exercise performance quality
 - **Adaptive feedback** - adjusts training based on real-time performance
+- **LLM (planned, thesis contribution)** - generates natural coaching cues from performance signals; optional voice input in a later phase
+
+## Session Onboarding
+
+Before answering the first substantive question of a new session, do this in parallel:
+1. `ls sessions/ 2>/dev/null | tail -3` — read the most recent session log if one exists. That file's "Tomorrow — start here" section is the highest-signal context for where work left off.
+2. `git log --oneline -10` — last ten commits on this branch.
+3. `git status` — current working tree state.
+
+Skip this only if the user's opening message is a trivial one-liner ("what does file X do?"). For any task that will touch behavior, start with the session log.
 
 ## Architecture & Core Components
 

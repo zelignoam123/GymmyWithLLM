@@ -11,11 +11,16 @@ class Training(threading.Thread):
         threading.Thread.__init__(self)
 
     def run(self):
-        print("TRAINING START")
+        print("TRAINING START", flush=True)
         self.run_exercise("hello_waving")
-        print("Training: start waving")
+        print("Training: waiting for user to wave at the camera...", flush=True)
+        _last_beat = time.time()
         while not s.waved:
             time.sleep(0.00000001)  # Prevents the MP to stuck
+            if time.time() - _last_beat > 5:
+                print("Training: still waiting for wave (waved=%s, calibration=%s)"
+                      % (s.waved, s.calibration), flush=True)
+                _last_beat = time.time()
             continue
         s.waved = False # set as False again for future
         if not s.calibration:
