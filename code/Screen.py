@@ -43,15 +43,18 @@ class FullScreenApp(object):
         master.bind('<Escape>', self.toggle_geom)
 
         # Camera preview thumbnail — bottom-right corner, updated from main thread.
+        # Uses its OWN VideoCapture (camera index 0) separate from s.cap used by MP.py.
+        # Sharing a single cap across threads causes native AVFoundation crashes on macOS.
+        import cv2
+        self._preview_cap = cv2.VideoCapture(s.camera_num)
         self._cam_label = tk.Label(master, bg='black', bd=2, relief='solid')
         self._cam_label.place(relx=1.0, rely=1.0, anchor='se', x=-10, y=-10)
         self._update_camera()
 
     def _update_camera(self):
         try:
-            cap = getattr(s, 'cap', None)
-            if cap and cap.isOpened():
-                ok, frame = cap.read()
+            if self._preview_cap.isOpened():
+                ok, frame = self._preview_cap.read()
                 if ok:
                     import cv2
                     frame = cv2.flip(frame, 1)
@@ -65,7 +68,7 @@ class FullScreenApp(object):
                     self._cam_label._photo = photo  # prevent GC
         except Exception:
             pass
-        self.master.after(66, self._update_camera)  # ~15 fps — light enough for main thread
+        self.master.after(66, self._update_camera)  # ~15 fps
 
     def toggle_geom(self, event):
         geom=self.master.winfo_geometry()

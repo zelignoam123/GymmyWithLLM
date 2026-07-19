@@ -3,6 +3,7 @@ import socket
 import json
 import math
 import time
+import subprocess
 import pandas as pd
 import numpy as np
 from statistics import mean, stdev
@@ -49,27 +50,46 @@ class Camera(threading.Thread):
             return None
 
     def init_position(self):
-        # Check user position - so all joints all visible, and all exercise will be able to be recognized.
+        # Check user position - so all joints are visible and arms are raised to sides.
+        CALIBRATION_JOINTS = ["R_Shoulder", "L_Shoulder", "R_Elbow", "L_Elbow",
+                              "R_Wrist", "L_Wrist", "R_Hip", "L_Hip"]
         init_pos = False
         say("calibration")
-        print("CAMERA: init position - please stand in front of the camera with hands to the sides")
+        print("CAMERA: Calibration — step back until full upper body is in frame, then raise arms to sides (T-pose)", flush=True)
+        _last_feedback = 0
         while not init_pos:
             jd = self.get_skeleton_data()
-            if jd is not None:
-                count = 0
-                for j in jd.values():
-                    print(j)
-                    if j.visible:
-                        count += 1
+            if jd is None:
+                if time.time() - _last_feedback > 4:
+                    print("CAMERA: Calibration — no skeleton detected. Step closer to the camera.", flush=True)
+                    subprocess.Popen(["say", "-v", "Carmit", "אני לא רואה אותך. אנא עמוד מול המצלמה."])
+                    _last_feedback = time.time()
+                continue
+
+            count = sum(1 for j in jd.values() if j.visible)
+            missing = [name for name in CALIBRATION_JOINTS if not jd[name].visible]
+
+            if time.time() - _last_feedback > 4:
+                if missing:
+                    msg = "אני לא רואה את הגוף שלך במלואו. אנא תעמוד מרחוק יותר ותרים את הידיים הצידה."
+                    print(f"CAMERA: Calibration — can see {count}/{len(jd)} joints. Missing: {missing}. Step back and raise arms.", flush=True)
+                else:
+                    angle_right = self.calc_angle(jd["R_Shoulder"], jd["R_Hip"], jd["R_Wrist"])
+                    angle_left  = self.calc_angle(jd["L_Shoulder"], jd["L_Hip"], jd["L_Wrist"])
+                    print(f"CAMERA: Calibration — all joints visible. Arm angles: R={angle_right}° L={angle_left}° (need >80°). Raise arms to sides.", flush=True)
+                    msg = "מצוין, אני רואה אותך. עכשיו תרים את שתי הידיים הצידה."
+                subprocess.Popen(["say", "-v", "Carmit", msg])
+                _last_feedback = time.time()
+
+            if not missing:
                 angle_right = self.calc_angle(jd["R_Shoulder"], jd["R_Hip"], jd["R_Wrist"])
-                angle_left = self.calc_angle(jd["L_Shoulder"], jd["L_Hip"], jd["L_Wrist"])
-                if count == len(jd) and angle_right > 80 and angle_left > 80:
-                    init_pos = True  # all joints are visible + arms are raised to the sides - position initialized.
-            else:  # skeleton is not recognized in frame
-                print("user is not recognized")
-        # say("calibration_complete")
+                angle_left  = self.calc_angle(jd["L_Shoulder"], jd["L_Hip"], jd["L_Wrist"])
+                if angle_right and angle_left and angle_right > 80 and angle_left > 80:
+                    init_pos = True
+
+        say("calibration_complete")
         s.calibration = True
-        print("CAMERA: init position verified")
+        print("CAMERA: Calibration complete — position verified.", flush=True)
 
     def calc_angle(self, joint1, joint2, joint3):
         a = self.calc_dist(joint1, joint2)
