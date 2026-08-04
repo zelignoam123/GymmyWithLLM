@@ -84,6 +84,170 @@ The system adapts based on performance:
    - No problems → user-led training (robot doesn't count, user tries again on failure)
 4. **Repeat Assessment** - Runs initial 2 exercises again to measure improvement
 
+## Classification & Feedback Pipeline
+
+All classification and feedback happens **intra-session in real time** — not between sessions.
+
+```
+Camera.py (collects angle timeseries per exercise)
+    → performance_classification.py::feature_extraction() (38 features per hand)
+        → performance_classification.py::predict_performance() (statsmodels regression → float score)
+            → s.performance_class[exercise] = {'right': score, 'left': score}
+                → Training.py line 59-79 (sum > 1.1 → adaptation decision)
+                    → Camera.py line 190/249 (corrective feedback trigger mid-exercise)
+                        → Audio.py say(exercise_name + "_" + str(flag)) → plays .wav
+```
+
+### Timing within a session
+
+1. User does exercise → Camera.py tracks angles → exercise ends
+2. **Immediately**: `classify_performance()` extracts features from the angle data, predicts score
+3. After both assessment exercises complete → Training.py makes adaptation decision
+4. During subsequent exercises → corrective feedback fires mid-rep if user is struggling
+
+### Feature List (38 features per hand)
+
+Extracted from the angle timeseries by `performance_classification.py::feature_extraction()`:
+
+**Repetition features** (aggregated mean + std across all reps):
+| # | Feature | Measures |
+|---|---------|----------|
+| 1 | `rep_count` | Number of completed reps detected |
+| 2-3 | `start_value_mean/std` | Angle at rep start — consistency of starting position |
+| 4-5 | `peak_value_mean/std` | Angle at rep peak — consistency of full range of motion |
+| 6-7 | `end_value_mean/std` | Angle at rep end — consistency of return position |
+| 8-9 | `num_frames_up_mean/std` | Time (frames) for raising phase — rhythm consistency |
+| 10-11 | `num_frames_down_mean/std` | Time (frames) for lowering phase — rhythm consistency |
+
+**Velocity & acceleration features** (per phase, aggregated mean + std):
+| # | Feature | Measures |
+|---|---------|----------|
+| 12-13 | `vel_mean_up_mean/std` | Raising speed — are you moving fast enough upward |
+| 14-15 | `vel_sd_up_mean/std` | Smoothness during raise — jerky vs fluid |
+| 16-17 | `acc_mean_up_mean/std` | Raising acceleration — momentum building |
+| 18-19 | `acc_sd_up_mean/std` | Jerk during raise — stability of effort |
+| 20-21 | `vel_mean_down_mean/std` | Lowering speed — controlled descent |
+| 22-23 | `vel_sd_down_mean/std` | Smoothness during lower — controlled vs dropping |
+| 24-25 | `acc_mean_down_mean/std` | Lowering acceleration — gravity vs control |
+| 26-27 | `acc_sd_down_mean/std` | Jerk during lower — stability of descent |
+
+**FFT (frequency) features:**
+| # | Feature | Measures |
+|---|---------|----------|
+| 28 | `freq_num` | Number of frequency components — movement complexity |
+| 29-30 | `magnitude_mean/sd` | Spectral energy distribution — rhythmic consistency |
+| 31-32 | `DF1_freq/mag` | Dominant frequency — main movement rhythm |
+| 33-34 | `DF2_freq/mag` | 2nd dominant frequency — secondary pattern |
+| 35-36 | `DF3_freq/mag` | 3rd dominant frequency — tertiary pattern |
+| 37 | `CL` | Cycle length (frames per rep) — pacing |
+| 38 | `cycles_num` | Number of movement cycles — completeness |
+
+### Feature-to-Feedback Mapping (positive tone)
+
+Each feature maps to an actionable, positive coaching cue:
+
+| Feature group | Positive coaching cue (Hebrew intent) |
+|---------------|--------------------------------------|
+| `peak_value` low | "Try reaching full range of motion with your {hand}" |
+| `start_value` inconsistent | "Try starting each rep from the same position" |
+| `vel_sd_up` high | "Try moving more smoothly on the way up" |
+| `vel_sd_down` high | "Try lowering your arms with a steady pace" |
+| `vel_mean_up` low | "Try picking up the pace a bit on the way up" |
+| `vel_mean_down` too fast | "Try controlling the descent — a little slower" |
+| `num_frames_up` inconsistent | "Try keeping the same rhythm for each rep" |
+| `CL` too long | "Try shortening your reps a bit — keep momentum" |
+| `rep_count` low | "Try completing the full set of repetitions" |
+| `acc_sd` high | "Try keeping your movement steady — less jerky" |
+
+### Where the LLM fits in this pipeline
+
+The LLM replaces **only the last step** — the rigid `say(filename)` call:
+
+```
+[EXISTING - stays unchanged]
+Camera.py → feature_extraction → predict_performance → s.performance_class → Training.py decision
+
+[EXISTING trigger - stays unchanged]
+Camera.py line 190: if corrective_feedback and robot_rep >= rep/2 and counter <= 2:
+
+[OLD - hardcoded]
+    say(exercise_name + "_" + str(flag))  →  plays generic .wav
+
+[NEW - LLM replaces this]
+    context = {features, scores, top_3_contributors, exercise, hand, flag, angle...}
+    feedback_text = LLMFeedback.generate(context)  →  natural Hebrew cue via TTS
+```
+
+The LLM receives the **top 3 features that most impacted the score** (via model coefficient × standardized value) and generates a **positive, specific, context-aware Hebrew coaching cue** that addresses those exact weaknesses. The ML model still decides *whether* to give feedback; the LLM decides *how to phrase it*.
+
+### LLM vs Static Map — Tradeoff Table
+
+| Aspect | Static map (dict lookup) | LLM |
+|--------|--------------------------|-----|
+| Latency | ~0ms | 500-2000ms (API call + TTS) |
+| Cost | Free | Per-token API cost |
+| Phrasing variety | Same sentence every time | Different phrasing each time |
+| Combining cues | Concatenates 3 separate sentences | Merges into one fluent coaching turn |
+| Progress-awareness | Can do with if/else on improvement delta | Natural ("you're getting closer!") |
+| Offline/no-internet | Works always | Fails without connectivity |
+| Thesis contribution | "feature-importance-based feedback" | "LLM-generated natural coaching" |
+| Implementation effort | 1 dict + format() | Prompt engineering + API integration + TTS |
+| Determinism | 100% reproducible | Varies per call |
+
+**Recommended approach**: Static map as the **core mechanism** (always works, zero latency). LLM as an **optional wrapper** that takes the 3 static cues + context and rephrases them into one natural sentence. Fallback to static map if LLM fails/times out.
+
+### Cross-Session Improvement Tracking
+
+**Goal**: Detect improvement between sessions and add positive reinforcement ("Your range of motion improved since last time!")
+
+**What to compare**: The **contribution** per feature = `coefficient × standardized_value`. Coefficients are fixed model weights; what changes between sessions is the user's actual feature values.
+
+```
+contribution_i = coefficient_i × ((feature_value_i - mean_i) / std_i)
+```
+
+**How it works**:
+
+1. After each session's `predict_performance()`, save per-hand contributions dict:
+   ```python
+   # Saved to file: sessions/{participant_code}_{exercise}_{date}.json
+   {
+       "exercise": "raise_arms_horizontally",
+       "hand": "right",
+       "date": "2026-08-03",
+       "contributions": {
+           "peak_value_mean": 1.2,
+           "vel_sd_up_mean": 0.8,
+           "start_value_std": 0.3,
+           ...
+       },
+       "total_score": 1.5
+   }
+   ```
+
+2. At start of next session, load previous contributions for the same exercise+hand
+
+3. Compare: `delta_i = prev_contribution_i - current_contribution_i` (positive delta = improvement)
+
+4. Top improved features get positive reinforcement in feedback:
+   ```python
+   IMPROVEMENT_FEEDBACK = {
+       'peak_value': "טווח התנועה שלך השתפר מהפעם הקודמת עם יד {hand}!",
+       'vel_sd_up': "התנועה שלך חלקה יותר מהפעם הקודמת!",
+       'num_frames_up': "הקצב שלך יציב יותר — כל הכבוד!",
+       ...
+   }
+   ```
+
+**Calculation summary**:
+- Same contribution formula: `coeff × standardized_value`
+- Compare across sessions (not within): `prev_session - current_session`
+- Positive delta → feature improved → add positive feedback
+- Threshold for "meaningful" improvement: delta > 0.2 (prevents noise)
+- Only comment on features that were previously in the top-3 problematic (user heard about them)
+
+**Storage**: One JSON file per session/exercise/hand in a `sessions/` directory. Lightweight, human-readable, no database needed.
+
 ## Code Conventions
 
 ### Important Implementation Details
@@ -320,3 +484,26 @@ Each session generates:
 
 3. **Recorded data**: `recorded_data2.json`
    - Complete MediaPipe skeleton data stream
+
+## API Key Details
+
+| Field | Value |
+|-------|-------|
+| Key name | Gemini API Key |
+| Project ID | project-0c4af6c5-9e91-4c42-a19 |
+| Project number | 599699470946 |
+| Provider | Google AI Studio (Gemini Flash) |
+| Model | gemini-2.0-flash |
+| Free tier | 15 RPM, 1M tokens/day, $0 billing |
+| Expiry | Never (unless manually revoked) |
+
+**Key location**: `code/.env` (gitignored — never committed)
+
+**How to generate/regenerate**:
+1. Go to https://aistudio.google.com/apikey
+2. Sign in with your Google account
+3. Click "Create API Key" (or find existing key under the project above)
+4. Copy the key into `code/.env` as: `GEMINI_API_KEY=your-key`
+
+`LLMFeedback.py` loads the key automatically from `code/.env` at import time.
+

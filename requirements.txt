@@ -44,3 +44,4 @@ urllib3==2.6.3
 wget==3.2
 xlsxwriter==3.2.9
 zipp==3.23.1
+google-genai>=1.47.0
