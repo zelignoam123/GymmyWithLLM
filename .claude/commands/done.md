@@ -1,57 +1,61 @@
 ---
-description: Wrap up the session — write a dated log to sessions/ with what changed, what's blocked, what to do tomorrow, and thesis-progress bullets. Then commit-ready summary.
-argument-hint: "[optional one-line focus, e.g. 'CoppeliaSim + Tk setup']"
+description: End-of-session — append today's progress to PROGRESS.md, update TODO/blockers/critical path, set tomorrow's start point.
+argument-hint: "[optional one-line focus, e.g. 'LLM feedback module']"
 allowed-tools: Bash(git status:*), Bash(git diff:*), Bash(git log:*), Bash(mkdir:*), Bash(date:*), Read, Write, Edit
 ---
 
-Wrap up today's work. Follow the steps in order — do not skip.
+Wrap up today's work into `PROGRESS.md`. This is a SINGLE file — append, don't create new files.
 
 ## 1. Gather context
 
 Run in parallel:
-- `git status` — what's modified/untracked right now
-- `git diff --stat` — line counts per file for quick scope read
-- `git diff` — full working-tree diff (for anything committed today, also `git log --since=midnight --oneline`)
-- Also read the earlier assistant/user messages in this conversation — the summary must reflect what *we did in this session*, including changes I only described but didn't `git commit`.
+- `git status`
+- `git diff --stat`
+- `git log --since=midnight --oneline`
+- Read `PROGRESS.md` to see current state
 
-## 2. Write the session log
+## 2. Update PROGRESS.md
 
-Path: `sessions/YYYY-MM-DD.md` (use today's date from `date +%Y-%m-%d`). Create the `sessions/` folder if it doesn't exist. If a file for today already exists, append a new `## <HH:MM> — <focus>` block instead of overwriting.
+Edit the file (don't overwrite). Do ALL of:
 
-Template — fill every section, drop any that would be empty:
+### A. Append a new session block
+After the last `---` session separator, add:
 
 ```markdown
-# Session — YYYY-MM-DD
+---
 
-**Focus:** $ARGUMENTS  (or infer one from the diff / conversation)
+## Session N — YYYY-MM-DD
 
-## What changed
-- Bullet per meaningful edit. Reference files as `path:line` links. State the *why*, not just the *what*.
-- Group by file if there are many small edits to the same file.
+**Focus:** $ARGUMENTS (or infer)
 
-## What broke and how we fixed it
-- The runtime errors we actually hit this session, and the fix. This is the highest-value section for future-me — keep it concrete.
-- Include the exact error message (one line) so it's greppable next time it recurs.
+### Completed
+- What got done this session (past tense, verb-first)
 
-## Still blocked / open questions
-- Anything left unresolved. Be honest — "I don't know if X works because I couldn't test it" belongs here.
+### Architecture decisions
+| Decision | Rationale |
+(only if decisions were made)
 
-## Tomorrow — start here
-- Concrete next actions, ordered. Each one should be small enough to do in under an hour.
-- If a specific command is the very next step, include it verbatim in a code block.
-
-## Thesis-progress bullets
-Short, presentable phrases suitable for a slide / advisor update. Past tense, verb-first, no jargon the advisor wouldn't know:
-- "Set up simulator + robot toolchain on Apple Silicon (Rosetta, x86_64 venv, CoppeliaSim 4.1)"
-- "Added progress logging + timestamped per-run log files"
-- etc.
+### Issues resolved
+| Error | Fix |
+(only if errors were hit)
 ```
+
+### B. Update the living sections
+These sections are NOT per-session — they reflect CURRENT state:
+
+- **Open Questions** — add new ones, mark resolved ones as RESOLVED
+- **Blockers** — add/remove as status changes
+- **TODO** — reorder, mark completed with ~~strikethrough~~, add new items, move [NEXT] tag
+- **Critical Path** — mark completed steps with [DONE], advance [NEXT]
+- **Future Work** — add any new ideas discussed
+
+### C. Update the timestamp
+Change `*Last updated: ...*` at the bottom.
 
 ## 3. Report back
 
-After writing the file, print:
-1. The full path to the session log.
-2. A 3-5 line executive summary (what got done, what's blocked, first action tomorrow).
-3. If there are uncommitted changes on disk, remind the user with the exact `git add / git commit` command they'd need — but do **not** commit unless they explicitly ask.
-
-Do not run tests, linters, or the app. This is a wrap-up, not a verify.
+Print:
+1. Path: `PROGRESS.md`
+2. 3-line summary: done / blocked / first action tomorrow
+3. If uncommitted changes exist, show `git add` / `git commit` commands (don't commit)
+4. Remind: "Type `/done` at end of every session"
